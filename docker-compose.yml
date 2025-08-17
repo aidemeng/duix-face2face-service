@@ -1,0 +1,59 @@
+# Duix Face2Face 云服务
+# 专注于Face2Face视频生成的云端API服务
+
+version: '3.8'
+
+networks:
+  ai_network:
+    driver: bridge
+
+services:
+  # Face2Face视频生成服务 (原始Duix AI服务)
+  heygem-gen-video:
+    image: guiji2025/heygem.ai
+    container_name: heygem-gen-video
+    restart: always
+    runtime: nvidia
+    privileged: true
+    volumes:
+      - ./data:/code/data  # 共享数据目录
+    environment:
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:1024  # 针对RTX 4090优化
+      - CUDA_VISIBLE_DEVICES=0
+    deploy:
+      resources:
+        limits:
+          memory: 30g  # 限制最大内存使用
+        reservations:
+          memory: 20g  # 预留内存
+          devices:
+            - capabilities: [gpu]
+    shm_size: '20g'  # 针对RTX 4090优化，最佳性能配置
+    ports:
+      - '8383:8383'  # 内部端口
+    command: python /code/app_local.py
+    networks:
+      - ai_network
+
+  # FastAPI服务层
+  duix-face2face-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: duix-face2face-api
+    restart: always
+    volumes:
+      - ./data:/code/data  # 共享数据目录
+    ports:
+      - '8385:8385'  # 对外暴露的API端口
+    environment:
+      - DUIX_INTERNAL_URL=http://heygem-gen-video:8383
+      - DUIX_DATA_DIR=/code/data
+    depends_on:
+      - heygem-gen-video
+    networks:
+      - ai_network
+
+volumes:
+  data:
+    driver: local
