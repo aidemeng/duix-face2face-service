@@ -202,8 +202,9 @@ class Face2FaceService:
     def get_result(self, result_filename: str, task_code: str = None) -> dict:
         """获取任务结果并清理所有相关文件"""
         try:
-            # 就像桌面端一样简单：固定目录 + 文件名
-            output_path = os.path.join(self.duix_data_dir, result_filename)
+            # 从 temp 子目录读取结果文件
+            temp_dir = os.path.join(self.duix_data_dir, "temp")
+            output_path = os.path.join(temp_dir, result_filename)
 
             logger.info(f"获取结果文件: {output_path}")
 
@@ -216,7 +217,7 @@ class Face2FaceService:
 
             logger.info(f"获取结果成功，大小: {len(video_data)} bytes")
 
-            # ✅ 修正：使用任务文件映射表精确清理相关文件
+            # 使用任务文件映射表精确清理相关文件
             files_to_cleanup = [output_path]
 
             # 如果提供了task_code，从映射表中获取准确的输入文件路径
@@ -403,8 +404,8 @@ async def submit_task(request: TaskSubmitRequest):
     """
     提交Face2Face任务
 
-    - **audio_url**: 音频文件URL (支持WAV/MP3等格式)
-    - **video_url**: 人物参考视频URL (MP4格式)
+    - audio_url: 音频文件URL (支持WAV/MP3等格式)
+    - video_url: 人物参考视频URL (MP4格式)
 
     返回任务ID，需要后续轮询查询状态
     """
@@ -428,17 +429,17 @@ async def submit_task(request: TaskSubmitRequest):
             error=str(e)
         )
 
-@app.post("/api/query_task", response_model=TaskQueryResponse)
-async def query_task(request: TaskQueryRequest):
+@app.get("/api/query_task", response_model=TaskQueryResponse)
+async def query_task(task_code: str):
     """
     查询任务状态
 
-    - **task_code**: 任务ID
+    - task_code: 任务ID
 
     返回任务状态信息
     """
     try:
-        result = face2face_service.query_task(request.task_code)
+        result = face2face_service.query_task(task_code)
 
         return TaskQueryResponse(
             success=True,
@@ -455,19 +456,20 @@ async def query_task(request: TaskQueryRequest):
             error=str(e)
         )
 
-@app.post("/api/get_result")
-async def get_result(request: TaskResultRequest):
+@app.get("/api/get_result")
+async def get_result(filename: str, task_code: str = None):
     """
-    获取任务结果 - 简化版
+    获取任务结果
 
-    - **result_filename**: 结果文件名（从query接口的data.result获取）
+    - filename: 结果文件名
+    - task_code: 任务ID
 
     返回base64编码的生成视频
     """
     try:
         result = face2face_service.get_result(
-            request.result_filename,
-            request.task_code
+            filename,
+            task_code
         )
 
         return {
