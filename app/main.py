@@ -69,7 +69,7 @@ class Face2FaceService:
         self.start_periodic_cleanup()
         logger.info(f"Face2Face服务启动，数据目录: {self.duix_data_dir}")
     
-    def download_file(self, url: str, file_type: str) -> tuple[str, str]:
+    def download_file(self, url: str, file_type: str) -> Tuple[str, str]:
         """下载文件到Duix数据目录"""
         # 从URL中提取原始文件名
         from urllib.parse import urlparse
