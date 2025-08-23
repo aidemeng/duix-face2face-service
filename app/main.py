@@ -13,7 +13,7 @@ import base64
 import threading
 
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 import logging
 
 # 配置日志
@@ -202,14 +202,31 @@ class Face2FaceService:
     def get_result(self, result_filename: str, task_code: str = None) -> dict:
         """获取任务结果并清理所有相关文件"""
         try:
-            # 从 temp 子目录读取结果文件
-            temp_dir = os.path.join(self.duix_data_dir, "temp")
-            output_path = os.path.join(temp_dir, result_filename)
+            # 清理文件名，移除开头的斜杠
+            clean_filename = result_filename.lstrip('/')
 
-            logger.info(f"获取结果文件: {output_path}")
+            # 构建可能的文件路径
+            possible_paths = [
+                # 1. 在配置的数据目录的temp子目录中
+                os.path.join(self.duix_data_dir, "temp", clean_filename),
+                # 2. 在/code/data/temp目录中
+                f"/code/data/temp/{clean_filename}",
+                # 3. 如果原始filename是完整路径，直接使用
+                result_filename if result_filename.startswith('/code/') else None
+            ]
 
-            if not os.path.exists(output_path):
-                raise Exception(f"结果文件不存在: {result_filename}")
+            # 过滤掉None值
+            possible_paths = [p for p in possible_paths if p is not None]
+
+            output_path = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    output_path = path
+                    logger.info(f"找到结果文件: {output_path}")
+                    break
+
+            if output_path is None:
+                raise Exception(f"结果文件不存在: {result_filename} (已检查路径: {possible_paths})")
 
             # 读取结果
             with open(output_path, 'rb') as f:
