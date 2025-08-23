@@ -1,5 +1,5 @@
-# Duix Face2Face 云服务
-# 专注于Face2Face视频生成的云端API服务
+# Duix Face2Face 云GPU部署配置
+# 适用于PPIO云GPU环境
 
 version: '3.8'
 
@@ -8,7 +8,7 @@ networks:
     driver: bridge
 
 services:
-  # Face2Face视频生成服务 (原始Duix AI服务)
+  # Face2Face视频生成服务 (使用现有镜像)
   heygem-gen-video:
     image: guiji2025/heygem.ai
     container_name: heygem-gen-video
@@ -16,43 +16,54 @@ services:
     runtime: nvidia
     privileged: true
     volumes:
-      - ./data:/code/data  # 共享数据目录
+      - /data:/code/data  # 使用云GPU的数据目录 - RTX 4090优化
     environment:
-      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:1024  # 针对RTX 4090优化
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:1024  # RTX 4090优化
       - CUDA_VISIBLE_DEVICES=0
     deploy:
       resources:
         limits:
-          memory: 30g  # 限制最大内存使用
+          memory: 30g  # 保守配置，留足够内存给系统和其他服务
         reservations:
-          memory: 20g  # 预留内存
+          memory: 20g  # 预留20GB
           devices:
             - capabilities: [gpu]
-    shm_size: '20g'  # 针对RTX 4090优化，最佳性能配置
+    shm_size: '20g'  # RTX 4090优化配置
     ports:
-      - '8383:8383'  # 内部端口
+      - '8383:8383'
     command: python /code/app_local.py
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8383/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 120s  # GPU服务启动较慢，给足够时间
     networks:
       - ai_network
 
-  # FastAPI服务层
+  # FastAPI服务层 (使用上传的自定义镜像)
   duix-face2face-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: image.ppinfra.com/prod-eftqrvyctuvyrddswevc/duix-face2face-api:latest
     container_name: duix-face2face-api
     restart: always
     volumes:
-      - ./data:/code/data  # 共享数据目录
+      - /data:/code/data  # 共享数据目录
     ports:
       - '8385:8385'  # 对外暴露的API端口
     environment:
       - DUIX_INTERNAL_URL=http://heygem-gen-video:8383
       - DUIX_DATA_DIR=/code/data
     depends_on:
-      - heygem-gen-video
+      heygem-gen-video:
+        condition: service_healthy
     networks:
       - ai_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8385/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
   data:
